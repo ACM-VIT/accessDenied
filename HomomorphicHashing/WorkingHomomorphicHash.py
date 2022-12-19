@@ -25,25 +25,6 @@ Original file is located at
     a, b, ..., e are the subkeys that are generated from the key
 """
 
-# Reference used: 
-## https://dzone.com/articles/algorithm-week-homomorphic
-## Sub References: https://www.cs.cmu.edu/~rwh/theses/okasaki.pdf, https://pdos.csail.mit.edu/papers/otfvec/paper.pdf, 
-
-# Properties of a Homomorphic Function: kH(m + n + o) = H(km) + H(kn) + H(ko) = kH(m) + kH(n) + kH(o)
-# the homomorphic hash function is H(x) = g^x mod q
-# here, sum = a + b + c + d + e -> sum is the key and a, b, ..., e are the subkeys that are generated from the key
-
-# p  [1 2 3 4 5]
-# q  [1 2 3 4 5]
-# g  [1 2 3 4 5]
-# h  [1 2 3 4 5]
-# m [[1 2 3 4 5]
-#    [6 7 8 9 0]]
-# Hs [1 2 3 4 5]
-# S [[1 2 3 4 5]
-#    [6 7 8 9 0]]
-# Hp [1 2 3 4 5]
-
 import random
 import math
 import pickle
@@ -52,11 +33,34 @@ PASS_LEN = 10
 BLOCK_LEN = 5
 
 def isPrime(x: int) -> bool:
+    '''
+    Checks if the given number is a prime
+    '''
     for i in range(2, int(math.sqrt(x)) + 1):
-        if(x % i == 0): return False
+        if(x % i == 0):
+            return False
+
     return True
 
-def keygen(P = 101) -> int:
+def primegen(start = 1001, step = 1) -> list:
+    '''
+    Generates a set of primes P to be used for for hashing
+    '''
+    i = start
+    primes = []
+    while (len(primes) < BLOCK_LEN):
+        if(isPrime(i)):
+            primes.append(i)
+        i+=step
+    # print(f'primes({start}, {step}): {primes}')
+
+    return primes
+
+def keygen(P = 1001) -> int:
+    '''
+    Generates a set of primes Q to be used for hashing
+    Q follows the property: Q % P == 1
+    '''
     keys = []
     i = 1
     # print(f"P: {P}\nQ:")
@@ -67,36 +71,29 @@ def keygen(P = 101) -> int:
             keys.append(Q)
         i+=1
     k = random.randint(0, BLOCK_LEN-1)
-    print(f'keygen({P}): {keys} - {keys[k]}')
+    # print(f'keygen({P}): {keys} - {keys[k]}')
     
     return keys[k]
 
-def primegen(start = 101, step = 2) -> list:
-    i = start
-    primes = []
-    while (len(primes) < BLOCK_LEN):
-        if(isPrime(i)):
-            primes.append(i)
-        i+=step
-
-    # print(f'primes({start}, {step}): {primes}')
-    return primes
-
 def HomoHash(a: int, b: int, x: int, k = 1) -> int:
+    '''
+    The main homomorphic hash function: a^(k.x) (mod b)
+    '''
     return pow(a, k*x, b)
 
 def obfuscate(x: list, k = [1 for j in range(BLOCK_LEN)]) -> list:
+    '''
+    Obfuscates all the subkeys to be sent by multiplying them with a random secret number k
+    '''
     obfuscated_message = [[0 for j in range(BLOCK_LEN)] for i in range(len(x))] 
     for i in range(len(x)):
         for j in range(BLOCK_LEN):
             obfuscated_message[i][j] = x[i][j]*k[j]
             # print(f"obfuscated_message[{i}][{j}] = x[{i}][{j}]*k[{j}] = {x[i][j]}*{k[j]} = {obfuscated_message[i][j]}")
+
     return obfuscated_message
 
-# test = [[113, 119, 101, 114, 116], [121, 117, 105, 111, 112]]
-# print(obfuscate(test))
-
-def client_hash(x: list, g: list, q: list, p: list, k = [1 for j in range(BLOCK_LEN)])  -> tuple:
+def client_hash(x: list, g: list, q: list, p: list, k = [1 for j in range(BLOCK_LEN)])  -> list:
     '''
     implements "add": g^k(a+b) (mod q)
     # to compute the hash:
@@ -111,7 +108,9 @@ def client_hash(x: list, g: list, q: list, p: list, k = [1 for j in range(BLOCK_
             sums[i] += (x[j][i] % p[i])
         sums[i] %= p[i]
         hashed_sums[i] = HomoHash(g[i], q[i], k[i]*(sums[i]))
-    return sums, hashed_sums
+    # print(hashed_sums)
+    
+    return hashed_sums
 
 def server_hash(x: list, g: list, q: list, p: list, k = [1 for j in range(BLOCK_LEN)])  -> tuple:
     '''
@@ -121,9 +120,8 @@ def server_hash(x: list, g: list, q: list, p: list, k = [1 for j in range(BLOCK_
     ## compute the hash of each individual character by raising g to the power of the character (mod q)
     ## compute the "sum" of the hashes of the individual characters by multiplying them (mod q)
     '''
-
     hashed_products = [[1 for j in range(BLOCK_LEN)] for i in range(len(x))]
-    products = [0 for j in range(BLOCK_LEN)]
+    products = [1 for j in range(BLOCK_LEN)]
     # for i in range(0, PASS_LEN//BLOCK_LEN + 1): product *= pow(g, q, x[i]%p)
     for i in range(BLOCK_LEN):
         for j in range(len(x)):
@@ -131,67 +129,75 @@ def server_hash(x: list, g: list, q: list, p: list, k = [1 for j in range(BLOCK_
             hashed_products[j][i] = temp
             products[i] *= temp
             products[i] %= q[i]
-    print(hashed_products)
+    # print(products)
+    # print(hashed_products)
+
     return products, hashed_products
 
 # Variables used in the script
 # get password from the user
-inp = 'qwertyuiop' # input("10 Characters: ") # private
+inp = input("10 Characters: ") # private
+# 'qwertyuiop'  
 inp += ' '*(PASS_LEN-len(inp))
 # hash message
 m = [[ord(inp[i+j]) for j in range(BLOCK_LEN)] for i in range(0, PASS_LEN, BLOCK_LEN)] # private
 S = [[0 for j in range(BLOCK_LEN)] for i in range(len(m))] # distributed
-# Hp = [0 for j in range(BLOCK_LEN)] # public
-# Hs = [0 for j in range(BLOCK_LEN)] # public
-
-print(inp)
-print(m)
-
-"""Constants used in the hash function"""
 
 # Constants used in the hash function
 ## Choose prime p - 257
-p = primegen() # public
-print(p)
+p = primegen(1001) # public
 
 ## Choose q such that `q % p == 1` or `p | (q - 1)` - 257*6 + 1
 q = [keygen(x) for x in p] # public
 
 ## a random number g
-g = [random.randint(100, 500) for i in range(BLOCK_LEN)] # public
+g = [random.randint(50, 100) for i in range(BLOCK_LEN)] # public
+
 ## generate fuzz factors k
-k = [random.randint(15, 100) for i in range(BLOCK_LEN)] # private
-# hashes computed at each server, same length as the input + padding
-print(f'g: {g}')
-print(f'k: {k}')
+k = [random.randint(15, 50) for i in range(BLOCK_LEN)] # private
 
-Hs1 = client_hash(m, g, q, p)
-Hp1, S1 = server_hash(m, g, q, p)
+# Calculate all the hashes from all parties
+client_tmp = client_hash(m, g, q, p)
+client_tmp_obf = client_hash(m, g, q, p, k)
+server_tmp = server_hash(m, g, q, p)
+server_tmp_obf = server_hash(m, g, q, p, k)
 
-Hs = client_hash(m, g, q, p, k)
-Hp, S = server_hash(m, g, q, p, k)
+print("\nHash Function:\tH(x, a, b, k) = a^(k.x) (mod b)\n")
+print("Data generated: ")
+print("\n\tInput: ")
+print("\t", inp)
+print("\n\tInput encoded into blocks: ")
+print("\t", m)
+print("\n\tPrimes generated (P): ")
+print("\t", p)
+print("\n\tDependent primes (Q[i] | Q[i] % P[i] == 1): ")
+print("\t", q)
+print("\n\tBases (G): ")
+print("\t",g)
+print("\n\tFuzz factors (K): ")
+print("\t",k)
+print("\n")
 
+print("Clean data: ")
+print("\n\tClient side:")
+print("\t", client_tmp)
+print("\n\tServer side: ")
+print("\n\tIndividual server computation: ")
+print("\t", server_tmp[1])
+print("\n\tNetwork wide computation: ")
+print("\t", server_tmp[0])
+if(client_tmp == server_tmp[0]):
+    print("\n\tHashes are equal!")
+print("\n")
 
-
-print(client_hash(m, g, q, p))
-print(server_hash(m, g, q, p))
-
-print(client_hash(m, g, q, p, k))
-print(server_hash(m, g, q, p, k))
-
-print(f"""\nmessage (primary key):\n{obfuscate(m)}\n
-obfuscated sub keys (sent to each server):\n{obfuscate(m, k)}\n
-hashes (generated by each server):\n{S}\n
-sum_hash (hashing entire message - done by client):\n{Hs1}\n
-product (hashing each block and then adding the hashes - done by the distributed network):\n{Hp1}\n
-k_sum (obfuscated sum_hash):\n{Hs}\n
-k_product (obfuscated product_hash):\n{Hp}\n
-k_server (obfuscated hashes calculated on the server):\n{S1}""")
-
-'''
-if(sum_hash == product_hash):
-    print("Hashes are equal!")
-
-if(k_sum == k_product):
-    print("Obfuscated hashes are equal!")
-'''
+print("Obfuscated data: ")
+print("\n\tClient side:")
+print("\t", client_tmp_obf)
+print("\n\tServer side: ")
+print("\n\tIndividual server computation: ")
+print("\t", server_tmp_obf[1])
+print("\n\tNetwork wide computation: ")
+print("\t", server_tmp_obf[0])
+if(client_tmp_obf == server_tmp_obf[0]):
+    print("\n\tObfuscated hashes are equal!")
+print("\n")
